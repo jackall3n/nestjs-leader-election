@@ -19,6 +19,6 @@ Leader Election module for [Nest](https://github.com/nestjs/nest).
 $ yarn add nestjs-leader-election
 ```
 
-## FXDigital
+## FXDigital 👏
 
 Nearly 100% of the work in this package was work on and completed by [@fxdigital](https://github.com/wearefx).

@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { Server } from 'http';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { LeaderElectionService } from "../../lib";
 
 describe('LeaderElection', () => {
   let server: Server;
@@ -30,6 +31,12 @@ describe('LeaderElection', () => {
         expect(body.breed).toEqual(createDto.breed);
         done();
       });
+  });
+
+  it(`should try to lead`, (done) => {
+    const leaderElectionService = app.get<LeaderElectionService>(LeaderElectionService);
+
+    expect(leaderElectionService.isInElection()).toBe(true);
   });
 
   afterEach(async () => {

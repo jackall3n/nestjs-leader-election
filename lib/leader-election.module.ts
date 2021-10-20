@@ -1,23 +1,20 @@
-import { DynamicModule, Global, Module, Provider, Type } from "@nestjs/common";
-import { ScheduleModule } from "@nestjs/schedule";
+import { DynamicModule, Global, Module, Provider, Type } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import {
   LeaderElectionAsyncOptions,
   LeaderElectionOptions,
   LeaderElectionOptionsFactory,
-} from "./interfaces";
-import { LEADER_ELECTION_MODULE_OPTIONS } from "./constants";
+} from './interfaces';
+import { LEADER_ELECTION_MODULE_OPTIONS } from './constants';
 
-import { HeartbeatService } from "./services/heartbeat.service";
-import { RedisClientService } from "./services/redis-client.service";
-
-import { LeaderElectionHelper } from "./helpers/leader-election.helper";
+import { HeartbeatService } from './services/heartbeat.service';
+import { RedisClientService } from './services/redis-client.service';
+import { LeaderElectionService } from './services/leader-election.service';
 
 @Global()
 @Module({
   imports: [ScheduleModule.forRoot()],
-  providers: [LeaderElectionHelper, RedisClientService, HeartbeatService],
-  exports: [LeaderElectionHelper],
 })
 export class LeaderElectionModule {
   static forRoot(options: LeaderElectionOptions): DynamicModule {
@@ -31,7 +28,7 @@ export class LeaderElectionModule {
         RedisClientService,
         ...this.createProviders(),
       ],
-      exports: [LeaderElectionHelper],
+      exports: [LeaderElectionService],
     };
   }
 
@@ -65,9 +62,9 @@ export class LeaderElectionModule {
         useClass: HeartbeatService,
       },
       {
-        provide: LeaderElectionHelper,
+        provide: LeaderElectionService,
         inject: [HeartbeatService],
-        useClass: LeaderElectionHelper,
+        useClass: LeaderElectionService,
       },
     ];
   }
@@ -89,7 +86,7 @@ export class LeaderElectionModule {
   }
 
   static createAsyncOptionsProviders(
-    options: LeaderElectionAsyncOptions
+    options: LeaderElectionAsyncOptions,
   ): Provider {
     if (options.useFactory) {
       return {

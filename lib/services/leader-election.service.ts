@@ -1,7 +1,9 @@
-import { HeartbeatService } from "../services/heartbeat.service";
+import { HeartbeatService } from './heartbeat.service';
 
-export class LeaderElectionHelper {
-  constructor(private heartbeatService: HeartbeatService) {}
+export class LeaderElectionService {
+  constructor(private heartbeatService: HeartbeatService) {
+    console.log({ heartbeatService });
+  }
 
   /**
    * Determine if this node is the leader node for the cluster.
@@ -18,4 +20,4 @@ export class LeaderElectionHelper {
   }
 }
 
-export default LeaderElectionHelper;
+export default LeaderElectionService;
