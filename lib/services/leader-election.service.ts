@@ -30,18 +30,19 @@ export class LeaderElectionService {
    * Determine the state of this network
    */
   async status() {
-    const hasLeader = await this.hasLeader();
-    const networkSize = this.heartbeatService.getActiveNetworkSize();
-    const inElection = this.heartbeatService.inElection();
-    const leaderId = this.heartbeatService.getLeaderId();
-    const nodeId = this.heartbeatService.getNodeId();
-
     return {
-      hasLeader,
-      networkSize,
-      inElection,
-      leaderId,
-      nodeId,
+      id: this.heartbeatService.getNodeId(),
+      election: {
+        active: this.heartbeatService.inElection(),
+      },
+      leader: {
+        id: this.heartbeatService.getLeaderId(),
+        exists: await this.hasLeader(),
+      },
+      network: {
+        size: this.heartbeatService.getActiveNetworkSize(),
+        nodes: this.heartbeatService.getNetwork(),
+      },
     };
   }
 }

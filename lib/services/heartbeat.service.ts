@@ -1,18 +1,9 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit
-} from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { v4, validate, version } from "uuid";
 
 import { RedisClientService } from "./redis-client.service";
-import {
-  HEARTBEAT_INTERVAL,
-  TERM_MAXIMUM_FACTOR,
-  TERM_MINIMUM_FACTOR
-} from "../constants";
+import { HEARTBEAT_INTERVAL, TERM_MAXIMUM_FACTOR, TERM_MINIMUM_FACTOR } from "../constants";
 import { randomNumber } from "../utils";
 
 @Injectable()
@@ -86,7 +77,6 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
         if (!nodeTimestamp) {
           this.logger.log(`Found new Node: ${message}`);
-          return;
         }
 
         this.activeNodeTimestamps[message] = new Date();
@@ -265,6 +255,13 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
    */
   getActiveNetworkSize(): number {
     return Object.values(this.activeNodeTimestamps).length;
+  }
+
+  /**
+   * Retrieve the number of active nodes in the network.
+   */
+  getNetwork(): Record<string, Date> {
+    return this.activeNodeTimestamps;
   }
 
   /**
