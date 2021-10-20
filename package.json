@@ -1,11 +1,12 @@
 {
   "name": "nestjs-leader-election",
-  "version": "9.0.1",
+  "version": "0.0.2",
   "description": "A copy and refactor of the work completed by @fxdigital in their package @fxdigital/nestjs-leader-election",
   "author": "Jack Allen",
   "repository": "https://github.com/jackall3n/nestjs-leader-election.git",
   "license": "MIT",
   "scripts": {
+    "start:dev": "nest start --watch",
     "lint": "eslint \"lib/**/*.ts\" --fix",
     "format": "prettier \"lib/**/*.ts\" --write",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
