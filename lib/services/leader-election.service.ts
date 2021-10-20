@@ -18,6 +18,32 @@ export class LeaderElectionService {
   async isInElection(): Promise<boolean> {
     return this.heartbeatService.inElection();
   }
+
+  /**
+   * Determine if this network has a leader.
+   */
+  async hasLeader(): Promise<boolean> {
+    return this.heartbeatService.leaderIsConnected();
+  }
+
+  /**
+   * Determine the state of this network
+   */
+  async status() {
+    const hasLeader = await this.hasLeader();
+    const networkSize = this.heartbeatService.getActiveNetworkSize();
+    const inElection = this.heartbeatService.inElection();
+    const leaderId = this.heartbeatService.getLeaderId();
+    const nodeId = this.heartbeatService.getNodeId();
+
+    return {
+      hasLeader,
+      networkSize,
+      inElection,
+      leaderId,
+      nodeId,
+    };
+  }
 }
 
 export default LeaderElectionService;

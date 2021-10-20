@@ -7,6 +7,7 @@ import {
   HEARTBEAT,
   LEADER_ELECTION_MODULE_OPTIONS,
   VOTE,
+  TERMINATION,
 } from "../constants";
 import { LeaderElectionOptions } from "../interfaces";
 
@@ -51,6 +52,10 @@ export class RedisClientService {
     return `${this.prefix}-${VOTE}`;
   }
 
+  getTerminationChannelName(): string {
+    return `${this.prefix}-${TERMINATION}`;
+  }
+
   getCallElectionChannelName(): string {
     return `${this.prefix}-${CALL_ELECTION}`;
   }
@@ -65,6 +70,10 @@ export class RedisClientService {
 
   async callElection(nodeId: string): Promise<void> {
     await this.client.publish(this.getCallElectionChannelName(), nodeId);
+  }
+
+  async emitTermination(nodeId: string): Promise<void> {
+    await this.client.publish(this.getTerminationChannelName(), nodeId);
   }
 
   async placeVote(nodeId: string): Promise<void> {

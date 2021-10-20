@@ -1,4 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit
+} from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { v4, validate, version } from "uuid";
 
@@ -6,102 +11,147 @@ import { RedisClientService } from "./redis-client.service";
 import {
   HEARTBEAT_INTERVAL,
   TERM_MAXIMUM_FACTOR,
-  TERM_MINIMUM_FACTOR,
+  TERM_MINIMUM_FACTOR
 } from "../constants";
 import { randomNumber } from "../utils";
 
 @Injectable()
-export class HeartbeatService {
+export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(HeartbeatService.name);
 
   private nodeId: Readonly<string> = Object.freeze(v4());
 
-  private leaderId: string | null = null;
+  private leaderId?: string;
 
-  private activeNodeTimestamps: { [key: string]: Date } = {};
+  private activeNodeTimestamps: Record<string, Date> = {};
 
   private isInElection = false;
 
   private votesForMe = 0;
 
+  private readonly HEARTBEAT_CHANNEL: string;
+  private readonly CLAIM_POWER_CHANNEL: string;
+  private readonly CALL_ELECTION_CHANNEL: string;
+  private readonly VOTE_CHANNEL: string;
+  private readonly TERMINATION_CHANNEL: string;
+
   constructor(private redisService: RedisClientService) {
+    this.HEARTBEAT_CHANNEL = this.redisService.getHeartbeatChannelName();
+    this.CLAIM_POWER_CHANNEL = this.redisService.getClaimPowerChannelName();
+    this.CALL_ELECTION_CHANNEL = this.redisService.getCallElectionChannelName();
+    this.VOTE_CHANNEL = this.redisService.getVoteChannelName();
+    this.TERMINATION_CHANNEL = this.redisService.getTerminationChannelName();
+  }
+
+  async onModuleInit() {
     this.logger.log(`This Node ID: ${this.nodeId}`);
 
     this.redisService.publisherClient.nodeRedis.on(
       "message",
-      async (channel, message) => {
-        if (channel === this.redisService.getHeartbeatChannelName()) {
-          if (validate(message) && version(message) === 4) {
-            if (!(this.activeNodeTimestamps[message] instanceof Date)) {
-              this.logger.log(`Found new Node: ${message}`);
-            }
-            this.activeNodeTimestamps[message] = new Date();
-          } else {
-            this.logger.warn(
-              "Message in heartbeat channel was not a valid UUIDv4."
-            );
-          }
-        } else if (channel === this.redisService.getClaimPowerChannelName()) {
-          if (validate(message) && version(message) === 4) {
-            this.leaderId = message;
-            this.isInElection = false;
-            this.votesForMe = 0;
-
-            this.logger.log(`The leader is now [${message}]`);
-
-            if (message === this.nodeId) {
-              this.logger.log(`I am the LEADER.`);
-            } else {
-              this.logger.log(`I am a FOLLOWER.`);
-            }
-          }
-        } else if (channel === this.redisService.getVoteChannelName()) {
-          if (
-            validate(message) &&
-            version(message) === 4 &&
-            message === this.nodeId
-          ) {
-            this.votesForMe += 1;
-            this.logger.debug("A node voted for me.");
-
-            if (
-              this.inElection() &&
-              this.votesForMe >= this.getMajorityRequiredSize()
-            ) {
-              await this.claimPower();
-            }
-          } else {
-            this.logger.debug("A vote for a different node.");
-          }
-        } else if (channel === this.redisService.getCallElectionChannelName()) {
-          if (validate(message) && version(message) === 4) {
-            this.isInElection = true;
-            await this.voteInElection(message);
-          }
-        } else {
-          this.logger.warn(`Invalid channel name: ${channel}`);
-        }
-      }
+      (channel, message) => this.onMessage(channel, message)
     );
 
     // Finally subscribe to the heartbeat channel to receive heartbeats from the other nodes.
     this.redisService.publisherClient.nodeRedis.subscribe(
-      this.redisService.getHeartbeatChannelName()
+      this.HEARTBEAT_CHANNEL
     );
-
     this.redisService.publisherClient.nodeRedis.subscribe(
-      this.redisService.getClaimPowerChannelName()
+      this.CLAIM_POWER_CHANNEL
     );
-
     this.redisService.publisherClient.nodeRedis.subscribe(
-      this.redisService.getCallElectionChannelName()
+      this.CALL_ELECTION_CHANNEL
     );
-
+    this.redisService.publisherClient.nodeRedis.subscribe(this.VOTE_CHANNEL);
     this.redisService.publisherClient.nodeRedis.subscribe(
-      this.redisService.getVoteChannelName()
+      this.TERMINATION_CHANNEL
     );
 
-    this.callElection();
+    await this.callElection();
+  }
+
+  async onModuleDestroy() {
+    await this.redisService.emitTermination(this.nodeId);
+  }
+
+  async onMessage(channel: string, message: string) {
+    const valid = validate(message) && version(message) === 4;
+
+    if (!valid) {
+      return;
+    }
+
+    switch (channel) {
+      case this.HEARTBEAT_CHANNEL: {
+        const nodeTimestamp = this.activeNodeTimestamps[message];
+
+        if (!nodeTimestamp) {
+          this.logger.log(`Found new Node: ${message}`);
+          return;
+        }
+
+        this.activeNodeTimestamps[message] = new Date();
+
+        break;
+      }
+
+      case this.CLAIM_POWER_CHANNEL: {
+        this.leaderId = message;
+        this.isInElection = false;
+        this.votesForMe = 0;
+
+        this.logger.log(`The leader is now [${message}]`);
+
+        if (message === this.nodeId) {
+          this.logger.log(`I am the LEADER.`);
+        } else {
+          this.logger.log(`I am a FOLLOWER.`);
+        }
+
+        break;
+      }
+
+      case this.VOTE_CHANNEL: {
+        if (this.nodeId !== message) {
+          this.logger.debug("A vote for a different node.");
+          return;
+        }
+
+        this.logger.debug("A node voted for me.");
+
+        this.votesForMe += 1;
+
+        if (
+          this.inElection() &&
+          this.votesForMe >= this.getMajorityRequiredSize()
+        ) {
+          await this.claimPower();
+        }
+
+        break;
+      }
+
+      case this.CALL_ELECTION_CHANNEL: {
+        this.isInElection = true;
+
+        await this.voteInElection(message);
+
+        break;
+      }
+
+      case this.TERMINATION_CHANNEL: {
+        this.logger.debug(
+          `Node [${message}] has been terminated, Unimplemented handler`
+        );
+
+        break;
+      }
+
+      default: {
+        this.logger.warn(`Invalid channel name: ${channel}`);
+
+        return;
+      }
+    }
   }
 
   /**
@@ -152,40 +202,40 @@ export class HeartbeatService {
   async claimPower(): Promise<void> {
     this.logger.log("Claiming Power");
     this.isInElection = false;
+
     await this.redisService.claimPower(this.nodeId);
   }
 
   async callElection(): Promise<void> {
-    if (!this.isInElection) {
-      this.logger.log("Calling an election");
-      this.isInElection = true;
-      await this.redisService.callElection(this.nodeId);
+    if (this.isInElection) {
+      return;
     }
+
+    this.logger.log("Calling an election");
+    this.isInElection = true;
+
+    await this.redisService.callElection(this.nodeId);
   }
 
   async voteInElection(nodeIdThatCalledElection: string): Promise<void> {
     await this.postHeartbeat();
     await this.clearNonActiveNodes();
 
-    if (this.isInElection) {
-      await this.redisService.placeVote(nodeIdThatCalledElection);
+    if (!this.isInElection) {
+      return;
     }
+
+    await this.redisService.placeVote(nodeIdThatCalledElection);
   }
 
   async leaderIsConnected(): Promise<boolean> {
-    const existingLeader = this.leaderId;
-    this.clearNonActiveNodes();
+    await this.clearNonActiveNodes();
 
-    if (existingLeader === null) {
+    if (!this.leaderId) {
       return false;
     }
-    const nodeIds = Object.keys(this.activeNodeTimestamps);
 
-    if (nodeIds.includes(existingLeader)) {
-      return true;
-    }
-
-    return false;
+    return this.activeNodeTimestamps[this.leaderId] !== undefined;
   }
 
   @Interval(
@@ -195,21 +245,19 @@ export class HeartbeatService {
     )
   )
   async checkTheLeader(): Promise<void> {
-    const existingLeader = this.leaderId;
-
-    if (existingLeader === null) {
+    if (!this.leaderId) {
       await this.callElection();
-    } else {
-      if ((await this.leaderIsConnected()) === true) {
-        // safe, existing leader exists no cap
-        return undefined;
-      }
 
-      // heck oh no the leader aint there no more
-      await this.callElection();
+      return;
     }
 
-    return undefined;
+    if (await this.leaderIsConnected()) {
+      // safe, existing leader exists no cap
+      return undefined;
+    }
+
+    // heck oh no the leader aint there no more
+    await this.callElection();
   }
 
   /**
@@ -238,6 +286,20 @@ export class HeartbeatService {
    */
   inElection(): boolean {
     return this.isInElection;
+  }
+
+  /**
+   * Determines leader id
+   */
+  getLeaderId(): string | undefined {
+    return this.leaderId;
+  }
+
+  /**
+   * Determines node id
+   */
+  getNodeId(): string {
+    return this.nodeId;
   }
 }
 
