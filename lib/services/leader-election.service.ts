@@ -1,9 +1,9 @@
 import { HeartbeatService } from './heartbeat.service';
+import { Injectable } from '@nestjs/common';
 
+@Injectable()
 export class LeaderElectionService {
-  constructor(private heartbeatService: HeartbeatService) {
-    console.log({ heartbeatService });
-  }
+  constructor(private heartbeatService: HeartbeatService) {}
 
   /**
    * Determine if this node is the leader node for the cluster.

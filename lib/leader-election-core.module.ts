@@ -16,10 +16,10 @@ import { LeaderElectionService } from './services/leader-election.service';
 @Module({
   imports: [ScheduleModule.forRoot()],
 })
-export class LeaderElectionModule {
+export class LeaderElectionCoreModule {
   static forRoot(options: LeaderElectionOptions): DynamicModule {
     return {
-      module: LeaderElectionModule,
+      module: LeaderElectionCoreModule,
       providers: [
         {
           provide: LEADER_ELECTION_MODULE_OPTIONS,
@@ -44,13 +44,14 @@ export class LeaderElectionModule {
     };
 
     return {
-      module: LeaderElectionModule,
+      module: LeaderElectionCoreModule,
       imports: options.imports,
       providers: [
         ...asyncProviders,
         redisServiceProvider,
         ...this.createProviders(),
       ],
+      exports: [LeaderElectionService],
     };
   }
 
@@ -110,4 +111,4 @@ export class LeaderElectionModule {
   }
 }
 
-export default LeaderElectionModule;
+export default LeaderElectionCoreModule;
