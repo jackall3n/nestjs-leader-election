@@ -2,19 +2,19 @@ import {
   Injectable,
   Logger,
   OnModuleDestroy,
-  OnModuleInit
-} from "@nestjs/common";
-import { Interval } from "@nestjs/schedule";
-import { v4, validate, version } from "uuid";
+  OnModuleInit,
+} from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
+import { v4, validate, version } from 'uuid';
 
-import { RedisClientService } from "./redis-client.service";
+import { RedisClientService } from './redis-client.service';
 import {
   HEARTBEAT_INTERVAL,
   MAX_NODE_AGE,
   TERM_MAXIMUM_FACTOR,
-  TERM_MINIMUM_FACTOR
-} from "../constants";
-import { randomNumber } from "../utils";
+  TERM_MINIMUM_FACTOR,
+} from '../constants';
+import { randomNumber } from '../utils';
 
 @Injectable()
 export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
@@ -42,15 +42,15 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    this.logger.log(`This Node ID: ${this.nodeId}`);
+    this.logger.log(`Module initialised [${this.nodeId}]`);
 
-    this.redisService.subscriber.on("message", this.onMessage.bind(this));
+    this.redisService.subscriber.on('message', this.onMessage.bind(this));
 
-    await this.redisService.subscriber.subscribe(this.HEARTBEAT_CHANNEL);
-    await this.redisService.subscriber.subscribe(this.CLAIM_POWER_CHANNEL);
-    await this.redisService.subscriber.subscribe(this.CALL_ELECTION_CHANNEL);
-    await this.redisService.subscriber.subscribe(this.VOTE_CHANNEL);
-    await this.redisService.subscriber.subscribe(this.TERMINATION_CHANNEL);
+    await this.subscribe(this.HEARTBEAT_CHANNEL);
+    await this.subscribe(this.CLAIM_POWER_CHANNEL);
+    await this.subscribe(this.CALL_ELECTION_CHANNEL);
+    await this.subscribe(this.VOTE_CHANNEL);
+    await this.subscribe(this.TERMINATION_CHANNEL);
 
     await this.callElection();
   }
@@ -71,7 +71,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
         const timestamp = this.nodes[id];
 
         if (!timestamp) {
-          this.logger.log(`Found new Node: ${id}`);
+          this.logger.log(`Found new node [${id}]`);
         }
 
         this.nodes[id] = new Date();
@@ -84,7 +84,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
         this.isInElection = false;
         this.votesForMe = 0;
 
-        this.logger.log(`The leader is now [${id}]`);
+        this.logger.log(`Leader elected to node [${id}]`);
 
         if (id === this.nodeId) {
           this.logger.log(`I am the LEADER.`);
@@ -97,11 +97,11 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
       case this.VOTE_CHANNEL: {
         if (this.nodeId !== id) {
-          this.logger.debug("A vote for a different node.");
+          this.logger.debug('A vote for a different node.');
           return;
         }
 
-        this.logger.debug("A node voted for me.");
+        this.logger.debug('A node voted for me.');
 
         this.votesForMe += 1;
 
@@ -124,9 +124,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       }
 
       case this.TERMINATION_CHANNEL: {
-        this.logger.debug(
-          `Node [${id}] has been terminated, Unimplemented handler`
-        );
+        this.logger.debug(`Node [${id}] has been terminated.`);
 
         break;
       }
@@ -149,7 +147,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
   removeNodeFromList(id: string): void {
     delete this.nodes[id];
-    this.logger.log(`Removed node [${id}] from the list.`);
+
+    this.logger.log(`Removed node [${id}] from network cache.`);
   }
 
   @Interval(HEARTBEAT_INTERVAL)
@@ -181,7 +180,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   }
 
   async claimPower(): Promise<void> {
-    this.logger.log("Claiming Power");
+    this.logger.log('Attempting to claim power');
+
     this.isInElection = false;
 
     await this.redisService.claimPower(this.nodeId);
@@ -192,7 +192,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    this.logger.log("Calling an election");
+    this.logger.log('Calling an election');
+
     this.isInElection = true;
 
     await this.redisService.callElection(this.nodeId);
@@ -205,6 +206,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     if (!this.isInElection) {
       return;
     }
+
+    this.logger.debug(`Voting for node [${nodeIdThatCalledElection}]`);
 
     await this.redisService.placeVote(nodeIdThatCalledElection);
   }
@@ -222,8 +225,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   @Interval(
     randomNumber(
       HEARTBEAT_INTERVAL * TERM_MINIMUM_FACTOR,
-      HEARTBEAT_INTERVAL * TERM_MAXIMUM_FACTOR
-    )
+      HEARTBEAT_INTERVAL * TERM_MAXIMUM_FACTOR,
+    ),
   )
   async checkTheLeader(): Promise<void> {
     if (!this.leaderId) {
@@ -292,6 +295,20 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
   isValidNodeId(id: string) {
     return validate(id) && version(id) === 4;
+  }
+
+  public async subscribe(channel: string) {
+    return new Promise<void>((resolve, reject) => {
+      this.redisService.subscriber.subscribe(channel, (error, result) => {
+        if (error) {
+          this.logger.error(`[${channel}] subscription error: ${error}`);
+          return reject(error);
+        }
+
+        this.logger.debug(`[${channel}] subscription result: ${result}`);
+        resolve();
+      });
+    });
   }
 }
 
