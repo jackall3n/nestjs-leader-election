@@ -1,23 +1,30 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit
+} from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { v4, validate, version } from "uuid";
 
 import { RedisClientService } from "./redis-client.service";
-import { HEARTBEAT_INTERVAL, TERM_MAXIMUM_FACTOR, TERM_MINIMUM_FACTOR } from "../constants";
+import {
+  HEARTBEAT_INTERVAL,
+  MAX_NODE_AGE,
+  TERM_MAXIMUM_FACTOR,
+  TERM_MINIMUM_FACTOR
+} from "../constants";
 import { randomNumber } from "../utils";
 
 @Injectable()
 export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(HeartbeatService.name);
 
-  private nodeId: Readonly<string> = Object.freeze(v4());
-
   private leaderId?: string;
-
-  private activeNodeTimestamps: Record<string, Date> = {};
+  private readonly nodeId: Readonly<string> = Object.freeze(v4());
+  private readonly nodes: Record<string, Date> = {};
 
   private isInElection = false;
-
   private votesForMe = 0;
 
   private readonly HEARTBEAT_CHANNEL: string;
@@ -37,25 +44,13 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     this.logger.log(`This Node ID: ${this.nodeId}`);
 
-    this.redisService.publisherClient.nodeRedis.on(
-      "message",
-      (channel, message) => this.onMessage(channel, message)
-    );
+    this.redisService.subscriber.on("message", this.onMessage.bind(this));
 
-    // Finally subscribe to the heartbeat channel to receive heartbeats from the other nodes.
-    this.redisService.publisherClient.nodeRedis.subscribe(
-      this.HEARTBEAT_CHANNEL
-    );
-    this.redisService.publisherClient.nodeRedis.subscribe(
-      this.CLAIM_POWER_CHANNEL
-    );
-    this.redisService.publisherClient.nodeRedis.subscribe(
-      this.CALL_ELECTION_CHANNEL
-    );
-    this.redisService.publisherClient.nodeRedis.subscribe(this.VOTE_CHANNEL);
-    this.redisService.publisherClient.nodeRedis.subscribe(
-      this.TERMINATION_CHANNEL
-    );
+    await this.redisService.subscriber.subscribe(this.HEARTBEAT_CHANNEL);
+    await this.redisService.subscriber.subscribe(this.CLAIM_POWER_CHANNEL);
+    await this.redisService.subscriber.subscribe(this.CALL_ELECTION_CHANNEL);
+    await this.redisService.subscriber.subscribe(this.VOTE_CHANNEL);
+    await this.redisService.subscriber.subscribe(this.TERMINATION_CHANNEL);
 
     await this.callElection();
   }
@@ -64,8 +59,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     await this.redisService.emitTermination(this.nodeId);
   }
 
-  async onMessage(channel: string, message: string) {
-    const valid = validate(message) && version(message) === 4;
+  async onMessage(channel: string, id: string) {
+    const valid = validate(id) && version(id) === 4;
 
     if (!valid) {
       return;
@@ -73,25 +68,25 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
     switch (channel) {
       case this.HEARTBEAT_CHANNEL: {
-        const nodeTimestamp = this.activeNodeTimestamps[message];
+        const timestamp = this.nodes[id];
 
-        if (!nodeTimestamp) {
-          this.logger.log(`Found new Node: ${message}`);
+        if (!timestamp) {
+          this.logger.log(`Found new Node: ${id}`);
         }
 
-        this.activeNodeTimestamps[message] = new Date();
+        this.nodes[id] = new Date();
 
         break;
       }
 
       case this.CLAIM_POWER_CHANNEL: {
-        this.leaderId = message;
+        this.leaderId = id;
         this.isInElection = false;
         this.votesForMe = 0;
 
-        this.logger.log(`The leader is now [${message}]`);
+        this.logger.log(`The leader is now [${id}]`);
 
-        if (message === this.nodeId) {
+        if (id === this.nodeId) {
           this.logger.log(`I am the LEADER.`);
         } else {
           this.logger.log(`I am a FOLLOWER.`);
@@ -101,7 +96,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       }
 
       case this.VOTE_CHANNEL: {
-        if (this.nodeId !== message) {
+        if (this.nodeId !== id) {
           this.logger.debug("A vote for a different node.");
           return;
         }
@@ -123,14 +118,14 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       case this.CALL_ELECTION_CHANNEL: {
         this.isInElection = true;
 
-        await this.voteInElection(message);
+        await this.voteInElection(id);
 
         break;
       }
 
       case this.TERMINATION_CHANNEL: {
         this.logger.debug(
-          `Node [${message}] has been terminated, Unimplemented handler`
+          `Node [${id}] has been terminated, Unimplemented handler`
         );
 
         break;
@@ -152,41 +147,37 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     await this.redisService.emitHeartbeat(this.nodeId);
   }
 
-  removeNodeFromList(nodeId: string): void {
-    delete this.activeNodeTimestamps[nodeId];
-    this.logger.log(`Removed node [${nodeId}] from the list.`);
+  removeNodeFromList(id: string): void {
+    delete this.nodes[id];
+    this.logger.log(`Removed node [${id}] from the list.`);
   }
 
   @Interval(HEARTBEAT_INTERVAL)
   async clearNonActiveNodes(): Promise<void> {
-    const nodeIds = Object.keys(this.activeNodeTimestamps);
     const now = new Date();
 
-    nodeIds.forEach((nodeId) => {
-      let remove = false;
-      if (validate(nodeId) && version(nodeId) === 4) {
-        if (typeof this.activeNodeTimestamps[nodeId] !== "undefined") {
-          if (this.activeNodeTimestamps[nodeId] instanceof Date) {
-            const diff =
-              now.valueOf() - this.activeNodeTimestamps[nodeId].valueOf();
-            // Remove the node if the heartbeat was too far away :(
-            if (diff > HEARTBEAT_INTERVAL * 2) {
-              remove = true;
-            }
-          } else {
-            remove = true;
-          }
-        } else {
-          remove = true;
-        }
-      } else {
-        remove = true;
+    for (const id of Object.keys(this.nodes)) {
+      // If node id is invalid
+      if (!this.isValidNodeId(id)) {
+        this.removeNodeFromList(id);
+        continue;
       }
 
-      if (remove) {
-        this.removeNodeFromList(nodeId);
+      const timestamp = this.nodes[id];
+
+      // If the timestamp is invalid
+      if (!timestamp) {
+        this.removeNodeFromList(id);
+        continue;
       }
-    });
+
+      const age = now.valueOf() - timestamp.valueOf();
+
+      // If the timestamp has expired
+      if (age > MAX_NODE_AGE) {
+        this.removeNodeFromList(id);
+      }
+    }
   }
 
   async claimPower(): Promise<void> {
@@ -225,7 +216,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       return false;
     }
 
-    return this.activeNodeTimestamps[this.leaderId] !== undefined;
+    return this.nodes[this.leaderId] !== undefined;
   }
 
   @Interval(
@@ -254,14 +245,14 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
    * Retrieve the number of active nodes in the network.
    */
   getActiveNetworkSize(): number {
-    return Object.values(this.activeNodeTimestamps).length;
+    return Object.values(this.nodes).length;
   }
 
   /**
    * Retrieve the number of active nodes in the network.
    */
   getNetwork(): Record<string, Date> {
-    return this.activeNodeTimestamps;
+    return this.nodes;
   }
 
   /**
@@ -297,6 +288,10 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
    */
   getNodeId(): string {
     return this.nodeId;
+  }
+
+  isValidNodeId(id: string) {
+    return validate(id) && version(id) === 4;
   }
 }
 

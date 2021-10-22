@@ -1,5 +1,5 @@
-import { ModuleMetadata } from "@nestjs/common/interfaces";
-import { Type } from "@nestjs/common";
+import { ModuleMetadata } from '@nestjs/common/interfaces';
+import { Type } from '@nestjs/common';
 
 export interface RedisConfig {
   host: string;
@@ -17,7 +17,7 @@ export interface LeaderElectionOptionsFactory {
 }
 
 export interface LeaderElectionAsyncOptions
-  extends Pick<ModuleMetadata, "imports"> {
+  extends Pick<ModuleMetadata, 'imports'> {
   useExisting?: Type<LeaderElectionOptionsFactory>;
   useClass?: Type<LeaderElectionOptionsFactory>;
   useFactory?: (

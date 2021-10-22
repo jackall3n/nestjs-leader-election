@@ -104,8 +104,9 @@ export class LeaderElectionCoreModule {
 
     return {
       provide: LEADER_ELECTION_MODULE_OPTIONS,
-      useFactory: async (optionsFactory: LeaderElectionOptionsFactory) =>
-        optionsFactory.createLeaderElectionOptions(),
+      async useFactory(optionsFactory: LeaderElectionOptionsFactory) {
+        return optionsFactory.createLeaderElectionOptions();
+      },
       inject,
     };
   }

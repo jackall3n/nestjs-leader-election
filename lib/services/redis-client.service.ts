@@ -1,21 +1,21 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
-import { createNodeRedisClient } from "handy-redis";
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import {
   CALL_ELECTION,
   CLAIM_POWER,
   HEARTBEAT,
   LEADER_ELECTION_MODULE_OPTIONS,
-  VOTE,
   TERMINATION,
-} from "../constants";
-import { LeaderElectionOptions } from "../interfaces";
+  VOTE,
+} from '../constants';
+import { LeaderElectionOptions } from '../interfaces';
+import { createNodeRedisClient } from 'handy-redis';
+import { RedisClient } from 'redis';
 
 @Injectable()
 export class RedisClientService {
-  public readonly client;
-
-  public readonly publisherClient;
+  public readonly publisher: RedisClient;
+  public readonly subscriber: RedisClient;
 
   private readonly prefix: string;
 
@@ -23,20 +23,27 @@ export class RedisClientService {
 
   constructor(
     @Inject(LEADER_ELECTION_MODULE_OPTIONS)
-    private options: LeaderElectionOptions
+    private options: LeaderElectionOptions,
   ) {
-    this.client = createNodeRedisClient(options);
-
-    this.publisherClient = createNodeRedisClient(options);
+    this.publisher = createNodeRedisClient(options).nodeRedis;
+    this.subscriber = createNodeRedisClient(options).nodeRedis;
 
     this.prefix = `nestjs-leader-election-${options.prefix}:`;
 
-    this.client.nodeRedis.on("connect", () => {
-      this.logger.log("Redis connected");
+    this.subscriber.on('connect', () => {
+      this.logger.log('[SUBSCRIBER]: Connected');
     });
 
-    this.client.nodeRedis.on("error", () => {
-      this.logger.error("Redis error");
+    this.subscriber.on('error', () => {
+      this.logger.log('[SUBSCRIBER]: Error');
+    });
+
+    this.publisher.on('connect', () => {
+      this.logger.log('[PUBLISHER]: Connected');
+    });
+
+    this.publisher.on('error', () => {
+      this.logger.log('[PUBLISHER]: Error');
     });
   }
 
@@ -61,23 +68,23 @@ export class RedisClientService {
   }
 
   async emitHeartbeat(nodeId: string): Promise<void> {
-    await this.client.publish(this.getHeartbeatChannelName(), nodeId);
+    await this.publisher.publish(this.getHeartbeatChannelName(), nodeId);
   }
 
   async claimPower(nodeId: string): Promise<void> {
-    await this.client.publish(this.getClaimPowerChannelName(), nodeId);
+    await this.publisher.publish(this.getClaimPowerChannelName(), nodeId);
   }
 
   async callElection(nodeId: string): Promise<void> {
-    await this.client.publish(this.getCallElectionChannelName(), nodeId);
+    await this.publisher.publish(this.getCallElectionChannelName(), nodeId);
   }
 
   async emitTermination(nodeId: string): Promise<void> {
-    await this.client.publish(this.getTerminationChannelName(), nodeId);
+    await this.publisher.publish(this.getTerminationChannelName(), nodeId);
   }
 
   async placeVote(nodeId: string): Promise<void> {
-    await this.client.publish(this.getVoteChannelName(), nodeId);
+    await this.publisher.publish(this.getVoteChannelName(), nodeId);
   }
 }
 

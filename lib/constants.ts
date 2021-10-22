@@ -1,4 +1,5 @@
 export const HEARTBEAT_INTERVAL = 500;
+export const MAX_NODE_AGE = HEARTBEAT_INTERVAL * 2;
 export const HEARTBEAT = "heartbeat";
 export const CLAIM_POWER = "claim-power";
 export const VOTE = "vote";
