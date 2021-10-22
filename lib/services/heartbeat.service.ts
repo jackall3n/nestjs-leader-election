@@ -117,8 +117,6 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
         this.logger.debug(`Node [${id}] has been terminated.`);
 
         this.removeNodeFromList(id);
-
-        await this.checkTheLeader();
         break;
       }
 
