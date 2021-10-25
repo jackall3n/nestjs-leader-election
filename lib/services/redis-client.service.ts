@@ -15,13 +15,13 @@ import {
   VOTE,
 } from '../constants';
 import { LeaderElectionOptions } from '../interfaces';
-import { createNodeRedisClient } from 'handy-redis';
+import { createNodeRedisClient, WrappedNodeRedisClient } from 'handy-redis';
 import { RedisClient } from 'redis';
 
 @Injectable()
-export class RedisClientService implements OnModuleInit, OnModuleDestroy {
-  public readonly publisher: RedisClient;
-  public readonly subscriber: RedisClient;
+export class RedisClientService implements OnModuleInit, OnModuleDestroy, OnBeforeApplicationShutdown {
+  public readonly publisherClient: WrappedNodeRedisClient;
+  public readonly subscriberClient: WrappedNodeRedisClient;
 
   private readonly name: string;
 
@@ -33,8 +33,8 @@ export class RedisClientService implements OnModuleInit, OnModuleDestroy {
     @Inject(LEADER_ELECTION_MODULE_OPTIONS)
     private options: LeaderElectionOptions,
   ) {
-    this.publisher = createNodeRedisClient(options).nodeRedis;
-    this.subscriber = createNodeRedisClient(options).nodeRedis;
+    this.publisherClient = createNodeRedisClient(options);
+    this.subscriberClient = createNodeRedisClient(options);
 
     this.name = `nestjs-leader-election-${options.prefix}`;
   }
@@ -66,6 +66,9 @@ export class RedisClientService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     await this.onDestroy?.();
+
+    await this.publisherClient.quit();
+    await this.subscriberClient.quit();
   }
 
   getHeartbeatChannelName(): string {
@@ -138,6 +141,14 @@ export class RedisClientService implements OnModuleInit, OnModuleDestroy {
         resolve();
       });
     });
+  }
+
+  public get publisher(): RedisClient {
+    return this.publisherClient.nodeRedis;
+  }
+
+  public get subscriber(): RedisClient {
+    return this.subscriberClient.nodeRedis;
   }
 
   private createChannel(channel: string) {

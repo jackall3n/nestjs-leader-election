@@ -156,7 +156,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   /**
    * At the agreed intervals, emit a heartbeat to the channel.
    */
-  @Interval(HEARTBEAT_INTERVAL)
+  // @Interval(HEARTBEAT_INTERVAL)
   async postHeartbeat(): Promise<void> {
     await this.redis.emitHeartbeat(this.nodeId);
   }
@@ -167,7 +167,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Removed node [${id}] from network cache.`);
   }
 
-  @Interval(HEARTBEAT_INTERVAL)
+  // @Interval(HEARTBEAT_INTERVAL)
   async clearNonActiveNodes(): Promise<void> {
     const now = new Date();
 
@@ -238,12 +238,12 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     return this.nodes[this.leaderId] !== undefined;
   }
 
-  @Interval(
-    randomNumber(
-      HEARTBEAT_INTERVAL * TERM_MINIMUM_FACTOR,
-      HEARTBEAT_INTERVAL * TERM_MAXIMUM_FACTOR,
-    ),
-  )
+  // @Interval(
+  //   randomNumber(
+  //     HEARTBEAT_INTERVAL * TERM_MINIMUM_FACTOR,
+  //     HEARTBEAT_INTERVAL * TERM_MAXIMUM_FACTOR,
+  //   ),
+  // )
   async checkTheLeader(): Promise<void> {
     if (!this.leaderId) {
       await this.callElection();
