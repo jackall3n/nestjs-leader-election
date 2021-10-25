@@ -156,7 +156,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   /**
    * At the agreed intervals, emit a heartbeat to the channel.
    */
-  // @Interval(HEARTBEAT_INTERVAL)
+  @Interval(HEARTBEAT_INTERVAL)
   async postHeartbeat(): Promise<void> {
     await this.redis.emitHeartbeat(this.nodeId);
   }
@@ -238,12 +238,12 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     return this.nodes[this.leaderId] !== undefined;
   }
 
-  // @Interval(
-  //   randomNumber(
-  //     HEARTBEAT_INTERVAL * TERM_MINIMUM_FACTOR,
-  //     HEARTBEAT_INTERVAL * TERM_MAXIMUM_FACTOR,
-  //   ),
-  // )
+  @Interval(
+    randomNumber(
+      HEARTBEAT_INTERVAL * TERM_MINIMUM_FACTOR,
+      HEARTBEAT_INTERVAL * TERM_MAXIMUM_FACTOR,
+    ),
+  )
   async checkTheLeader(): Promise<void> {
     if (!this.leaderId) {
       await this.callElection();
@@ -313,5 +313,3 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     return validate(id) && version(id) === 4;
   }
 }
-
-export default HeartbeatService;

@@ -1,26 +1,26 @@
-import { DynamicModule, Module } from '@nestjs/common';
+import { Provider } from '@nestjs/common';
 
 import {
   LeaderElectionAsyncOptions,
   LeaderElectionOptions,
 } from './interfaces';
-import LeaderElectionCoreModule from './leader-election-core.module';
+import { LEADER_ELECTION_MODULE_OPTIONS } from './constants';
 
-@Module({})
-export class LeaderElectionModule {
-  static forRoot(options: LeaderElectionOptions): DynamicModule {
-    return {
-      module: LeaderElectionModule,
-      imports: [LeaderElectionCoreModule.forRoot(options)],
-    };
-  }
-
-  static forRootAsync(options: LeaderElectionAsyncOptions): DynamicModule {
-    return {
-      module: LeaderElectionModule,
-      imports: [LeaderElectionCoreModule.forRootAsync(options)],
-    };
-  }
+export function createOptionsProvider(
+  options: LeaderElectionOptions,
+): Provider {
+  return {
+    provide: LEADER_ELECTION_MODULE_OPTIONS,
+    useValue: options,
+  };
 }
 
-export default LeaderElectionModule;
+export function createAsyncOptionsProvider(
+  options: LeaderElectionAsyncOptions,
+): Provider {
+  return {
+    provide: LEADER_ELECTION_MODULE_OPTIONS,
+    useFactory: options.useFactory,
+    inject: options.inject,
+  };
+}

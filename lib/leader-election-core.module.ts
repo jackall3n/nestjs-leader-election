@@ -1,113 +1,46 @@
-import { DynamicModule, Global, Module, Provider, Type } from '@nestjs/common';
+import { DynamicModule, Global, Inject, Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 
 import {
   LeaderElectionAsyncOptions,
   LeaderElectionOptions,
-  LeaderElectionOptionsFactory,
 } from './interfaces';
 import { LEADER_ELECTION_MODULE_OPTIONS } from './constants';
 
 import { HeartbeatService } from './services/heartbeat.service';
 import { RedisClientService } from './services/redis-client.service';
 import { LeaderElectionService } from './services/leader-election.service';
+import {
+  createAsyncOptionsProvider,
+  createOptionsProvider,
+} from './leader-election.providers';
 
 @Global()
 @Module({
   imports: [ScheduleModule.forRoot()],
+  providers: [RedisClientService, LeaderElectionService, HeartbeatService],
+  exports: [LeaderElectionService],
 })
 export class LeaderElectionCoreModule {
+  constructor(
+    @Inject(LEADER_ELECTION_MODULE_OPTIONS)
+    private readonly options: LeaderElectionOptions,
+  ) {}
+
   static forRoot(options: LeaderElectionOptions): DynamicModule {
     return {
       module: LeaderElectionCoreModule,
-      providers: [
-        {
-          provide: LEADER_ELECTION_MODULE_OPTIONS,
-          useValue: options,
-        },
-        RedisClientService,
-        ...this.createProviders(),
-      ],
+      providers: [createOptionsProvider(options)],
       exports: [LeaderElectionService],
     };
   }
 
   static forRootAsync(options: LeaderElectionAsyncOptions): DynamicModule {
-    const asyncProviders = this.createAsyncProviders(options);
-
-    const redisServiceProvider: Provider = {
-      provide: RedisClientService,
-      async useFactory(leaderElectionOptions: LeaderElectionOptions) {
-        return new RedisClientService(leaderElectionOptions);
-      },
-      inject: [LEADER_ELECTION_MODULE_OPTIONS],
-    };
-
     return {
       module: LeaderElectionCoreModule,
       imports: options.imports,
-      providers: [
-        ...asyncProviders,
-        redisServiceProvider,
-        ...this.createProviders(),
-      ],
+      providers: [createAsyncOptionsProvider(options)],
       exports: [LeaderElectionService],
-    };
-  }
-
-  static createProviders(): Provider[] {
-    return [
-      {
-        provide: HeartbeatService,
-        inject: [RedisClientService],
-        useClass: HeartbeatService,
-      },
-      {
-        provide: LeaderElectionService,
-        inject: [HeartbeatService],
-        useClass: LeaderElectionService,
-      },
-    ];
-  }
-
-  static createAsyncProviders(options: LeaderElectionAsyncOptions): Provider[] {
-    if (options.useFactory || options.useExisting) {
-      return [this.createAsyncOptionsProviders(options)];
-    }
-
-    const useClass = options.useClass as Type<LeaderElectionOptionsFactory>;
-
-    return [
-      this.createAsyncOptionsProviders(options),
-      {
-        provide: useClass,
-        useClass,
-      },
-    ];
-  }
-
-  static createAsyncOptionsProviders(
-    options: LeaderElectionAsyncOptions,
-  ): Provider {
-    if (options.useFactory) {
-      return {
-        provide: LEADER_ELECTION_MODULE_OPTIONS,
-        useFactory: options.useFactory,
-        inject: options.inject || [],
-      };
-    }
-
-    const inject = [
-      (options.useClass ||
-        options.useExisting) as Type<LeaderElectionOptionsFactory>,
-    ];
-
-    return {
-      provide: LEADER_ELECTION_MODULE_OPTIONS,
-      async useFactory(optionsFactory: LeaderElectionOptionsFactory) {
-        return optionsFactory.createLeaderElectionOptions();
-      },
-      inject,
     };
   }
 }

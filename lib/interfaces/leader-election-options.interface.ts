@@ -1,5 +1,4 @@
 import { ModuleMetadata } from '@nestjs/common/interfaces';
-import { Type } from '@nestjs/common';
 
 export interface RedisConfig {
   host: string;
@@ -18,9 +17,7 @@ export interface LeaderElectionOptionsFactory {
 
 export interface LeaderElectionAsyncOptions
   extends Pick<ModuleMetadata, 'imports'> {
-  useExisting?: Type<LeaderElectionOptionsFactory>;
-  useClass?: Type<LeaderElectionOptionsFactory>;
-  useFactory?: (
+  useFactory: (
     ...args: any[]
   ) => Promise<ILeaderElectionOptions> | ILeaderElectionOptions;
   inject?: any[];

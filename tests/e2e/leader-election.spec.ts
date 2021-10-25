@@ -1,9 +1,8 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Server } from 'http';
-import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { LeaderElectionService } from "../../lib";
+import { LeaderElectionService } from '../../lib';
 
 describe('LeaderElection', () => {
   let server: Server;
@@ -19,27 +18,57 @@ describe('LeaderElection', () => {
     await app.init();
   });
 
-  it(`should return created document`, (done) => {
-    const createDto = { name: 'Nest', breed: 'Maine coon', age: 5 };
-    request(server)
-      .post('/cats')
-      .send(createDto)
-      .expect(201)
-      .end((err, { body }) => {
-        expect(body.name).toEqual(createDto.name);
-        expect(body.age).toEqual(createDto.age);
-        expect(body.breed).toEqual(createDto.breed);
-        done();
-      });
+  it(`should start an election`, async () => {
+    const leaderElectionService = app.get<LeaderElectionService>(
+      LeaderElectionService,
+    );
+
+    const actual = await leaderElectionService.status();
+
+    expect(actual.election.active).toBe(true);
   });
 
-  it(`should try to lead`, (done) => {
-    const leaderElectionService = app.get<LeaderElectionService>(LeaderElectionService);
+  it(`should try to lead`, async () => {
+    const leaderElectionService = app.get<LeaderElectionService>(
+      LeaderElectionService,
+    );
 
-    expect(leaderElectionService.isInElection()).toBe(true);
+    const actual = await leaderElectionService.status();
+
+    await waitUntil(() => actual.leader.exists);
+
+    expect(actual).toBe(true);
   });
 
   afterEach(async () => {
     await app.close();
   });
 });
+
+async function waitUntil(fn: () => Promise<boolean> | boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let checkTimeout: NodeJS.Timeout;
+
+    const timeout = setTimeout(() => {
+      clearTimeout(checkTimeout);
+      throw new Error('Timeout exceeded waiting');
+    }, 5000);
+
+    function check() {
+      const result = fn();
+
+      console.log('result', result);
+
+      if (result === true) {
+        resolve();
+        clearTimeout(timeout);
+        clearTimeout(checkTimeout);
+        return;
+      }
+
+      checkTimeout = setTimeout(check, 500);
+    }
+
+    checkTimeout = setTimeout(check, 500);
+  });
+}

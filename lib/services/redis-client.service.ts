@@ -2,6 +2,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  OnApplicationShutdown,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
@@ -19,7 +20,9 @@ import { createNodeRedisClient, WrappedNodeRedisClient } from 'handy-redis';
 import { RedisClient } from 'redis';
 
 @Injectable()
-export class RedisClientService implements OnModuleInit, OnModuleDestroy, OnBeforeApplicationShutdown {
+export class RedisClientService
+  implements OnModuleInit, OnModuleDestroy, OnApplicationShutdown
+{
   public readonly publisherClient: WrappedNodeRedisClient;
   public readonly subscriberClient: WrappedNodeRedisClient;
 
@@ -66,7 +69,9 @@ export class RedisClientService implements OnModuleInit, OnModuleDestroy, OnBefo
 
   async onModuleDestroy() {
     await this.onDestroy?.();
+  }
 
+  async onApplicationShutdown() {
     await this.publisherClient.quit();
     await this.subscriberClient.quit();
   }
