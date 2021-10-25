@@ -1,6 +1,6 @@
 {
   "name": "nestjs-leader-election",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A copy and refactor of the work completed by @fxdigital in their package @fxdigital/nestjs-leader-election",
   "author": "Jack Allen",
   "repository": "https://github.com/jackall3n/nestjs-leader-election.git",
