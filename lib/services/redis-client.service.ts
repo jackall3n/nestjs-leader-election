@@ -89,13 +89,15 @@ export class RedisClientService {
 
   public async subscribe(channel: string) {
     return new Promise<void>((resolve, reject) => {
-      this.subscriber.subscribe(channel, (error, result) => {
+      this.subscriber.subscribe(channel, (error) => {
         if (error) {
-          this.logger.error(`[${channel}] subscription error: ${error}`);
+          this.logger.error(
+            `Subscribed to channel [${channel}] error: ${error}`,
+          );
           return reject(error);
         }
 
-        this.logger.debug(`[${channel}] subscription result: ${result}`);
+        this.logger.debug(`Subscribed to channel [${channel}]`);
         resolve();
       });
     });
@@ -103,13 +105,15 @@ export class RedisClientService {
 
   public async unsubscribe(channel: string) {
     return new Promise<void>((resolve, reject) => {
-      this.subscriber.subscribe(channel, (error, result) => {
+      this.subscriber.subscribe(channel, (error) => {
         if (error) {
-          this.logger.error(`[${channel}] subscription error: ${error}`);
+          this.logger.error(
+            `Unsubscribed from channel [${channel}] error: ${error}`,
+          );
           return reject(error);
         }
 
-        this.logger.debug(`[${channel}] subscription result: ${result}`);
+        this.logger.debug(`Unsubscribed from channel [${channel}]`);
         resolve();
       });
     });
