@@ -33,6 +33,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   private readonly VOTE_CHANNEL: string;
   private readonly TERMINATION_CHANNEL: string;
 
+  private onDestroy?: () => Promise<void>;
+
   constructor(private redis: RedisClientService) {
     this.HEARTBEAT_CHANNEL = this.redis.getHeartbeatChannelName();
     this.CLAIM_POWER_CHANNEL = this.redis.getClaimPowerChannelName();
@@ -44,7 +46,9 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     this.logger.log(`Module initialised [${this.nodeId}]`);
 
-    this.redis.subscriber.on('message', this.onMessage.bind(this));
+    const onMessage = this.onMessage.bind(this);
+
+    this.redis.subscriber.on('message', onMessage);
 
     await this.redis.subscribe(this.HEARTBEAT_CHANNEL);
     await this.redis.subscribe(this.CLAIM_POWER_CHANNEL);
@@ -52,19 +56,22 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     await this.redis.subscribe(this.VOTE_CHANNEL);
     await this.redis.subscribe(this.TERMINATION_CHANNEL);
 
+    this.onDestroy = async () => {
+      await this.redis.unsubscribe(this.HEARTBEAT_CHANNEL);
+      await this.redis.unsubscribe(this.CLAIM_POWER_CHANNEL);
+      await this.redis.unsubscribe(this.CALL_ELECTION_CHANNEL);
+      await this.redis.unsubscribe(this.VOTE_CHANNEL);
+      await this.redis.unsubscribe(this.TERMINATION_CHANNEL);
+
+      this.redis.subscriber.off('message', onMessage);
+    };
+
     await this.callElection();
   }
 
   async onModuleDestroy() {
     await this.redis.emitTermination(this.nodeId);
-
-    this.redis.subscriber.off('message', this.onMessage.bind(this));
-
-    await this.redis.unsubscribe(this.HEARTBEAT_CHANNEL);
-    await this.redis.unsubscribe(this.CLAIM_POWER_CHANNEL);
-    await this.redis.unsubscribe(this.CALL_ELECTION_CHANNEL);
-    await this.redis.unsubscribe(this.VOTE_CHANNEL);
-    await this.redis.unsubscribe(this.TERMINATION_CHANNEL);
+    await this.onDestroy?.();
   }
 
   async onMessage(channel: string, id: string) {

@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 
 import {
   CALL_ELECTION,
@@ -13,13 +19,15 @@ import { createNodeRedisClient } from 'handy-redis';
 import { RedisClient } from 'redis';
 
 @Injectable()
-export class RedisClientService {
+export class RedisClientService implements OnModuleInit, OnModuleDestroy {
   public readonly publisher: RedisClient;
   public readonly subscriber: RedisClient;
 
-  private readonly prefix: string;
+  private readonly name: string;
 
   private readonly logger = new Logger(RedisClientService.name);
+
+  private onDestroy?: () => Promise<void>;
 
   constructor(
     @Inject(LEADER_ELECTION_MODULE_OPTIONS)
@@ -28,43 +36,56 @@ export class RedisClientService {
     this.publisher = createNodeRedisClient(options).nodeRedis;
     this.subscriber = createNodeRedisClient(options).nodeRedis;
 
-    this.prefix = `nestjs-leader-election-${options.prefix}:`;
+    this.name = `nestjs-leader-election-${options.prefix}`;
+  }
 
-    this.subscriber.on('connect', () => {
-      this.logger.log('[SUBSCRIBER]: Connected');
-    });
+  async onModuleInit() {
+    const onEvent = (name: string, event: string) => () => {
+      this.logger.log(`[${name}]: ${event}`);
+    };
 
-    this.subscriber.on('error', () => {
-      this.logger.log('[SUBSCRIBER]: Error');
-    });
+    const subscriberConnect = onEvent('SUBSCRIBER', 'Connected');
+    const subscriberError = onEvent('SUBSCRIBER', 'Error');
+    const publisherConnect = onEvent('PUBLISHER', 'Connected');
+    const publisherError = onEvent('PUBLISHER', 'Error');
 
-    this.publisher.on('connect', () => {
-      this.logger.log('[PUBLISHER]: Connected');
-    });
+    this.subscriber.on('connect', subscriberConnect);
+    this.subscriber.on('error', subscriberError);
 
-    this.publisher.on('error', () => {
-      this.logger.log('[PUBLISHER]: Error');
-    });
+    this.publisher.on('connect', publisherConnect);
+    this.publisher.on('error', publisherError);
+
+    this.onDestroy = async () => {
+      this.subscriber.off('connect', subscriberConnect);
+      this.subscriber.off('error', subscriberError);
+
+      this.publisher.off('connect', publisherConnect);
+      this.publisher.off('error', publisherError);
+    };
+  }
+
+  async onModuleDestroy() {
+    await this.onDestroy?.();
   }
 
   getHeartbeatChannelName(): string {
-    return `${this.prefix}-${HEARTBEAT}`;
+    return this.createChannel(HEARTBEAT);
   }
 
   getClaimPowerChannelName(): string {
-    return `${this.prefix}-${CLAIM_POWER}`;
+    return this.createChannel(CLAIM_POWER);
   }
 
   getVoteChannelName(): string {
-    return `${this.prefix}-${VOTE}`;
+    return this.createChannel(VOTE);
   }
 
   getTerminationChannelName(): string {
-    return `${this.prefix}-${TERMINATION}`;
+    return this.createChannel(TERMINATION);
   }
 
   getCallElectionChannelName(): string {
-    return `${this.prefix}-${CALL_ELECTION}`;
+    return this.createChannel(CALL_ELECTION);
   }
 
   async emitHeartbeat(nodeId: string): Promise<void> {
@@ -117,5 +138,9 @@ export class RedisClientService {
         resolve();
       });
     });
+  }
+
+  private createChannel(channel: string) {
+    return [this.name, channel].join(':');
   }
 }
