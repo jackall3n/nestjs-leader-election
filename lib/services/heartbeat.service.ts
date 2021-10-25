@@ -1,10 +1,20 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
-import { Interval } from "@nestjs/schedule";
-import { v4, validate, version } from "uuid";
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
+import { v4, validate, version } from 'uuid';
 
-import { RedisClientService } from "./redis-client.service";
-import { HEARTBEAT_INTERVAL, MAX_NODE_AGE, TERM_MAXIMUM_FACTOR, TERM_MINIMUM_FACTOR } from "../constants";
-import { randomNumber } from "../utils";
+import { RedisClientService } from './redis-client.service';
+import {
+  HEARTBEAT_INTERVAL,
+  MAX_NODE_AGE,
+  TERM_MAXIMUM_FACTOR,
+  TERM_MINIMUM_FACTOR,
+} from '../constants';
+import { randomNumber } from '../utils';
 
 @Injectable()
 export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
@@ -23,30 +33,38 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   private readonly VOTE_CHANNEL: string;
   private readonly TERMINATION_CHANNEL: string;
 
-  constructor(private redisService: RedisClientService) {
-    this.HEARTBEAT_CHANNEL = this.redisService.getHeartbeatChannelName();
-    this.CLAIM_POWER_CHANNEL = this.redisService.getClaimPowerChannelName();
-    this.CALL_ELECTION_CHANNEL = this.redisService.getCallElectionChannelName();
-    this.VOTE_CHANNEL = this.redisService.getVoteChannelName();
-    this.TERMINATION_CHANNEL = this.redisService.getTerminationChannelName();
+  constructor(private redis: RedisClientService) {
+    this.HEARTBEAT_CHANNEL = this.redis.getHeartbeatChannelName();
+    this.CLAIM_POWER_CHANNEL = this.redis.getClaimPowerChannelName();
+    this.CALL_ELECTION_CHANNEL = this.redis.getCallElectionChannelName();
+    this.VOTE_CHANNEL = this.redis.getVoteChannelName();
+    this.TERMINATION_CHANNEL = this.redis.getTerminationChannelName();
   }
 
   async onModuleInit() {
     this.logger.log(`Module initialised [${this.nodeId}]`);
 
-    this.redisService.subscriber.on("message", this.onMessage.bind(this));
+    this.redis.subscriber.on('message', this.onMessage.bind(this));
 
-    await this.subscribe(this.HEARTBEAT_CHANNEL);
-    await this.subscribe(this.CLAIM_POWER_CHANNEL);
-    await this.subscribe(this.CALL_ELECTION_CHANNEL);
-    await this.subscribe(this.VOTE_CHANNEL);
-    await this.subscribe(this.TERMINATION_CHANNEL);
+    await this.redis.subscribe(this.HEARTBEAT_CHANNEL);
+    await this.redis.subscribe(this.CLAIM_POWER_CHANNEL);
+    await this.redis.subscribe(this.CALL_ELECTION_CHANNEL);
+    await this.redis.subscribe(this.VOTE_CHANNEL);
+    await this.redis.subscribe(this.TERMINATION_CHANNEL);
 
     await this.callElection();
   }
 
   async onModuleDestroy() {
-    await this.redisService.emitTermination(this.nodeId);
+    await this.redis.emitTermination(this.nodeId);
+
+    this.redis.subscriber.off('message', this.onMessage.bind(this));
+
+    await this.redis.unsubscribe(this.HEARTBEAT_CHANNEL);
+    await this.redis.unsubscribe(this.CLAIM_POWER_CHANNEL);
+    await this.redis.unsubscribe(this.CALL_ELECTION_CHANNEL);
+    await this.redis.unsubscribe(this.VOTE_CHANNEL);
+    await this.redis.unsubscribe(this.TERMINATION_CHANNEL);
   }
 
   async onMessage(channel: string, id: string) {
@@ -87,11 +105,11 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
       case this.VOTE_CHANNEL: {
         if (this.nodeId !== id) {
-          this.logger.debug("A vote for a different node.");
+          this.logger.debug('A vote for a different node.');
           return;
         }
 
-        this.logger.debug("A node voted for me.");
+        this.logger.debug('A node voted for me.');
 
         this.votesForMe += 1;
 
@@ -133,7 +151,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
    */
   @Interval(HEARTBEAT_INTERVAL)
   async postHeartbeat(): Promise<void> {
-    await this.redisService.emitHeartbeat(this.nodeId);
+    await this.redis.emitHeartbeat(this.nodeId);
   }
 
   removeNodeFromList(id: string): void {
@@ -171,11 +189,11 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   }
 
   async claimPower(): Promise<void> {
-    this.logger.log("Attempting to claim power");
+    this.logger.log('Attempting to claim power');
 
     this.isInElection = false;
 
-    await this.redisService.claimPower(this.nodeId);
+    await this.redis.claimPower(this.nodeId);
   }
 
   async callElection(): Promise<void> {
@@ -183,11 +201,11 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    this.logger.log("Calling an election");
+    this.logger.log('Calling an election');
 
     this.isInElection = true;
 
-    await this.redisService.callElection(this.nodeId);
+    await this.redis.callElection(this.nodeId);
   }
 
   async voteInElection(nodeIdThatCalledElection: string): Promise<void> {
@@ -200,7 +218,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
     this.logger.debug(`Voting for node [${nodeIdThatCalledElection}]`);
 
-    await this.redisService.placeVote(nodeIdThatCalledElection);
+    await this.redis.placeVote(nodeIdThatCalledElection);
   }
 
   async leaderIsConnected(): Promise<boolean> {
@@ -216,8 +234,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   @Interval(
     randomNumber(
       HEARTBEAT_INTERVAL * TERM_MINIMUM_FACTOR,
-      HEARTBEAT_INTERVAL * TERM_MAXIMUM_FACTOR
-    )
+      HEARTBEAT_INTERVAL * TERM_MAXIMUM_FACTOR,
+    ),
   )
   async checkTheLeader(): Promise<void> {
     if (!this.leaderId) {
@@ -286,20 +304,6 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
   isValidNodeId(id: string) {
     return validate(id) && version(id) === 4;
-  }
-
-  public async subscribe(channel: string) {
-    return new Promise<void>((resolve, reject) => {
-      this.redisService.subscriber.subscribe(channel, (error, result) => {
-        if (error) {
-          this.logger.error(`[${channel}] subscription error: ${error}`);
-          return reject(error);
-        }
-
-        this.logger.debug(`[${channel}] subscription result: ${result}`);
-        resolve();
-      });
-    });
   }
 }
 

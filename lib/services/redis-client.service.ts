@@ -86,6 +86,32 @@ export class RedisClientService {
   async placeVote(nodeId: string): Promise<void> {
     await this.publisher.publish(this.getVoteChannelName(), nodeId);
   }
-}
 
-export default RedisClientService;
+  public async subscribe(channel: string) {
+    return new Promise<void>((resolve, reject) => {
+      this.subscriber.subscribe(channel, (error, result) => {
+        if (error) {
+          this.logger.error(`[${channel}] subscription error: ${error}`);
+          return reject(error);
+        }
+
+        this.logger.debug(`[${channel}] subscription result: ${result}`);
+        resolve();
+      });
+    });
+  }
+
+  public async unsubscribe(channel: string) {
+    return new Promise<void>((resolve, reject) => {
+      this.subscriber.subscribe(channel, (error, result) => {
+        if (error) {
+          this.logger.error(`[${channel}] subscription error: ${error}`);
+          return reject(error);
+        }
+
+        this.logger.debug(`[${channel}] subscription result: ${result}`);
+        resolve();
+      });
+    });
+  }
+}
